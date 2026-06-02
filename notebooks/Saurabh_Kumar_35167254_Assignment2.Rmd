@@ -1,0 +1,512 @@
+---
+title: "Data Visualisation Assignment 2"
+author: "Saurabh"
+date: "2025-09-17"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+
+```{r}
+getwd()
+```
+
+
+
+# Exploring IMDb dataset
+
+
+# Part A: Data pre-processing
+
+```{r}
+library(tidyverse)
+library(lubridate)   
+library(janitor)     
+library(stringr)     
+
+# 1. Import the datasets
+
+movies_raw <- read_csv("../data/movies.csv")
+budget_raw <- read_csv("../data/budget.csv")
+
+movies_raw
+budget_raw
+
+```
+
+
+```{r}
+# 2. Clean names 
+
+movies <- movies_raw %>% clean_names()
+budget <- budget_raw %>% clean_names()
+
+movies
+budget
+
+```
+
+
+
+
+```{r}
+
+# 3. Convert release_date style to proper date format(YYYY-MM-DD)
+
+budget <- budget %>%
+  mutate(release_date = mdy(release_date) )
+
+
+# 4. Remove missing dates
+
+budget <- budget %>%
+  filter(!is.na(release_date))
+
+budget
+```
+
+# Investigate and explain why certain dates failed to convert.
+
+While converting the release_date column with the mdy() function, two rows couldn’t 
+be turned into proper dates. 
+A closer look showed that these records listed only a four-digit year (like “2025” and “2027”)
+instead of a full month-day-year date such as “Jun 1, 2011”. 
+Because mdy() requires a complete date to work, it left those entries as NA. 
+In line with Step 4 of the task, we removed these rows so that the dataset keeps 
+only records with fully specified, valid release dates.
+
+
+```{r}
+
+
+# 5. Create year column
+
+budget <- budget %>%
+  mutate(year = year(release_date))
+
+budget
+
+# 6. Inner join 
+
+movies <- movies %>%
+  mutate(primary_title = str_to_lower(primary_title))
+
+budget <- budget %>%
+  mutate(movie = str_to_lower(movie))
+
+
+
+movies_budget <- inner_join(movies, budget, 
+                            by = c("primary_title" = "movie", "start_year" = "year"))
+
+movies_budget
+
+
+nrow(budget)
+nrow(movies_budget)
+
+```
+
+# 7. Explain why the resulting dataset has fewer rows than the original budget dataset.
+
+The final joined dataset is noticeably smaller because many rows from the budget 
+table could not find a perfect match in the movies table.
+Two key factors explain this:
+
+
+1. A few rows were dropped during cleaning.
+   Some ReleaseDate values in the budget data contained only a four-digit year, 
+   such as “2025” or “2027”.
+   The mdy() function requires a complete month–day–year date, so these entries 
+   could not be converted and were removed when rows with missing dates were filtered out.
+   This accounts for only a small portion of the reduction.
+   
+
+2. Most of the reduction is due to strict join requirements.
+   The inner_join() keeps only records where the lower-cased movie title and 
+   release year match exactly in both datasets.Many budget rows don’t meet this 
+   standard because of small but critical differences for example, punctuation or
+   spacing changes, alternate or shortened titles, the use of “&” instead of “and”, 
+   or the presence of colons, dashes, or parenthetical notes such as “Director’s Cut”.
+   Lowercasing helps with letter case but does not fix these deeper textual mismatches.
+   In other cases the release year differs slightly, as IMDb may record a festival
+   premiere or an international release year that does not align with the calendar 
+   year in the budget data. Rows with missing years on either side also cannot join.
+   
+   
+Because an inner join only retains rows that match on both movie title and release
+year, all entries with these kinds of inconsistencies are excluded.
+As a result, the final movies_budget table contains about 8,388 rows, compared 
+with 15,286 rows in the cleaned budget data.
+   
+
+
+# Part B: Data visualisation
+
+
+# Day of the week for movie releases
+```{r}
+# Add a weekday column using wday() and label the days
+movies_budget <- movies_budget %>%
+  mutate(release_wday = wday(release_date, label = TRUE, abbr = FALSE))
+
+# Visualise the count of movies by release weekday
+ggplot(movies_budget, aes(x = release_wday)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Movie releases by day of the week",
+       x = "Day of the Week",
+       y = "Number of Movies") +
+  theme_minimal()
+
+```
+
+# On which days are movies most frequently released?
+Movies were released most frequently on friday.
+
+# Explain what this suggests about release strategies in the film industry.
+Most movies are released on friday because it is the start of the weekend. 
+As majority of people don't go to work on saturdays and sunday, so many people 
+spend their free time to watch movies in theatre starting from Friday evening.
+
+
+
+
+# Box office performance by release day
+```{r}
+revenue_by_wday <- movies_budget %>%
+  mutate(release_wday = wday(release_date, label = TRUE, abbr = FALSE)) %>%
+  group_by(release_wday) %>%
+  summarise(mean_domestic = mean(domestic, na.rm = TRUE), .groups = "drop") %>%
+  mutate(release_wday = fct_relevel(release_wday,
+                     "Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"))
+
+
+
+ggplot(revenue_by_wday, aes(x = release_wday, y = mean_domestic)) +
+  geom_col(fill = "skyblue", width = 0.4) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::label_number(scale = 1e-6, suffix = "M")) +  # show millions
+  labs(title = "Average domestic revenue by release day",
+       x = "Day of the Week",
+       y = "Average Domestic Revenue (Millions USD)") +
+  theme_minimal()
+
+```
+
+
+# Do movies released on certain days perform better at the domestic box office revenue?
+The movies which released on Thursday performed better and generated
+better revenue.
+
+
+# Interpret the patterns observed in your visualisation.
+The chart shows that movies released on Thursdays earn the highest average 
+domestic revenue of about 62 million dollars, followed closely by Wednesdays at
+around 55 million dollars and Tuesdays at about 48 million dollars. 
+Fridays still perform well at roughly 40 million dollars, but they trail the 
+mid week releases. Mondays average around 30 million dollars, while Sundays and 
+Saturdays bring in the least, at about 25 million and 20 million dollars 
+respectively.
+The analysis shows that films opening on Thursdays record the highest average 
+domestic gross followed by Wednesdays and Tuesdays, while Saturday releases earn
+the least. This suggests that the day a film starts its run can influence its 
+total domestic box office performance.
+
+
+
+# Domestic box office trends by month
+```{r}
+# Extract month and group by it
+movies_budget <- movies_budget %>%
+  mutate(release_month = month(release_date, label = TRUE, abbr = TRUE))
+
+# Summarise total domestic revenue by month
+revenue_by_month <- movies_budget %>%
+  group_by(release_month) %>%
+  summarise(total_domestic = sum(domestic, na.rm = TRUE))
+
+
+library(scales)
+
+ggplot(revenue_by_month, aes(x = release_month, y = total_domestic, group = 1)) +
+  geom_line(color = "forestgreen", size = 0.5) +
+  geom_point(color = "forestgreen", size = 2) +
+  scale_y_continuous(labels = label_number(scale = 1e-9, suffix = "B")) +  # show in billions
+  labs(title = "Domestic box office trends by month",
+       x = "Month of Release",
+       y = "Total Domestic Revenue (Billion USD)") +
+  theme_minimal()
+
+```
+
+
+# Are there particular months in which movies tend to earn higher domestic revenue?
+Movies released in June, July, November and December earn the higher domestic revenue.
+
+
+# Discuss factors that might influence these trends.
+The higher revenues in June, July, November and December are largely driven by 
+school holidays, summer vacations and major festive breaks like Thanksgiving 
+and Christmas. These periods give families and students more free time and 
+increase leisure activities, making people more likely to visit cinemas. 
+Studios also plan big budget releases during these months to tap into the larger
+audiences and maximize earnings.
+
+
+# Worldwide revenue over time by genre
+```{r}
+# Summarise yearly worldwide revenue per genre
+worldwide_by_genre <- movies_budget %>%
+  group_by(start_year, genre) %>%
+  summarise(total_worldwide = sum(worldwide, na.rm = TRUE), .groups = "drop")
+
+
+ggplot(worldwide_by_genre, aes(x = start_year, y = total_worldwide, fill = genre)) +
+  geom_area(alpha = 0.8 , size = 0.3, colour = "white") +
+  scale_y_continuous(labels = scales::label_dollar(scale = 1e-9, suffix = "B")) +
+  labs(
+    title = "Worldwide box office revenue over time by genre (stacked)",
+    x = "Release Year",
+    y = "Total Worldwide Revenue (USD billions)",
+    fill = "Genre") +
+  theme_minimal()
+
+```
+
+
+# Interpretation
+
+Action (red area):
+Action movies have been the main driver of global box office success. 
+Their earnings rose strongly from the 1990s, peaking around 2015–2018. 
+Even though there’s been a slight dip in the last few years, action films still 
+bring in the highest worldwide revenue.
+
+Adventure (yellow area):
+Adventure films have grown steadily alongside action since the 1990s, 
+reaching their highest point in the mid-2010s. They remain a close second to 
+action movies in overall box office performance.
+
+Comedy (green area):
+Comedies were strong performers through the 1990s and early 2000s but have 
+slowed down since about 2010. One reason could be that humor doesn’t always 
+translate well across different cultures, making these films less popular 
+globally.
+
+Drama (blue area):
+Drama movies grew steadily until the early 2000s but have gradually declined 
+since then. While they often receive critical praise and win awards, they
+generally don’t attract as big an audience as action or adventure films.
+
+Horror (purple area):
+Horror films have always been smaller in total revenue, though they’ve shown 
+some growth in recent years. Because they’re usually cheaper to make, horror 
+films can still be very profitable even with lower worldwide earnings.
+
+Unclassified/NA (grey area):
+Movies without a specific genre label have stayed very small over time and
+haven’t had much effect on worldwide box office trends.
+
+
+
+The sharp drop around 2020 aligns with pandemic-related cinema closures and 
+the rebound afterwards reflects theatres reopening and blockbuster releases 
+returning. Overall, global audience preferences and large scale franchise 
+productions have shifted the revenue balance strongly toward action oriented 
+genres.
+
+
+# Return on Investment (ROI)
+```{r}
+movies_budget <- movies_budget %>%
+  mutate(roi = worldwide / production_budget)
+
+# ROI vs production budget
+ggplot(movies_budget, aes(x = production_budget, y = roi, colour = genre)) +
+  geom_point(alpha = 0.4) +
+  scale_x_continuous(labels = scales::label_dollar(scale = 1e-6, suffix = "M")) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
+  labs(
+    title = "ROI vs Production Budget by Genre",
+    x = "Production Budget (USD millions)",
+    y = "ROI (Worldwide / Production Budget)"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+
+
+```{r}
+# ROI vs worldwide revenue
+ggplot(movies_budget, aes(x = worldwide, y = roi, colour = genre)) +
+  geom_point(alpha = 0.4) +
+  scale_x_continuous(labels = scales::label_dollar(scale = 1e-9, suffix = "B")) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
+  labs(
+    title = "ROI vs Worldwide Gross by Genre",
+    x = "Worldwide Revenue (USD billions)",
+    y = "ROI"
+  ) +
+  theme_minimal()
+
+```
+
+
+# Interpretation
+
+# ROI vs Worldwide gross by Genre
+
+Horror (purple):
+Horror films often deliver striking returns. Many are made on very small budgets
+yet manage to generate huge profits when they connect with audiences. These big 
+wins explain why horror has a reputation for low cost but high reward.
+
+Action (red):
+Action movies dominate worldwide revenue but their ROI usually remains modest. 
+Huge budgets and large marketing spends mean that even billion-dollar box office
+totals often translate into relatively lower ROI.
+
+Adventure (olive):
+Adventure films also generate strong global revenue, often close to action films, 
+but with ROI generally in the same modest range. Big production and marketing 
+costs limit overall return compared to the headline revenue numbers.
+
+Comedy (green):
+Comedies mostly fall in the mid-range of ROI. They can do well in certain markets,
+but humour doesn’t always travel easily across cultures, making worldwide earnings
+less predictable and limiting the potential for very high ROI.
+
+Drama (blue):
+Drama films show mixed and scattered ROI. While some achieve critical acclaim 
+and occasional box office success, they typically don’t generate the massive 
+returns of action, adventure, or even surprise-hit horror films.
+
+
+# ROI vs Budget by Genre
+
+Horror:
+Typically produced with very small budgets, horror occasionally delivers runaway
+successes with ROI well above 100. Although risky, when a film hits, it can be 
+hugely profitable.
+
+Action:
+Action films are concentrated at very large budgets and usuallyachieve ROI between 
+1 and 10. They dominate the global box office but require
+heavy investment to reach those earnings.
+
+Adventure:
+Adventure movies also lean toward high budgets and show ROI generally similar
+to action films. They benefit from broad appeal but need major financial 
+backing to succeed.
+
+Comedy:
+Comedies often operate with mid-sized budgets and have highly variable ROI.
+A few standouts perform very well, but many struggle to produce consistent 
+worldwide returns.
+
+Drama:
+Drama films also work with mid-sized budgets but show even more variability in ROI.
+While some titles earn strong praise or niche success, most lack the global draw 
+for sustained high ROI.
+
+Unclassified (NA):
+These films show no consistent pattern and make little impact on overall trends.
+
+
+
+# Top production companies
+```{r}
+library(forcats)
+
+# Lump less frequent companies into "Other"
+top_companies <- movies_budget %>%
+  mutate(prod_co_grouped = fct_lump_n(production_company, n = 10)) %>%
+  group_by(prod_co_grouped, genre) %>%
+  summarise(total_worldwide = sum(worldwide, na.rm = TRUE), .groups = "drop")
+
+
+ggplot(top_companies,
+       aes(x = reorder(prod_co_grouped, total_worldwide),
+           y = total_worldwide,
+           fill = genre)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(labels = scales::label_dollar(scale = 1e-9, suffix = "B")) +
+  labs(
+    title = "Top production companies by worldwide revenue (genre)",
+    x = "Production Company",
+    y = "Total Worldwide Revenue (USD billions)",
+    fill = "Genre"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, hjust = 0.5, 
+                              margin = margin(b = 15)),
+        plot.margin = margin(t = 20, r = 20, b = 20, l = 20))
+
+
+```
+
+# Interpretation
+
+# Top production companies by worldwide revenue and genre
+
+Action:
+Universal Pictures and Warner Bros. are the clear leaders in action films, 
+regularly turning out big-budget blockbusters that dominate worldwide box offices.
+Columbia Pictures and Paramount also make strong contributions, but their totals
+remain behind the top two.
+
+Adventure:
+Walt Disney Pictures stands out in adventure films, thanks to global hits like 
+Marvel, Star Wars and Pixar series. Universal Pictures and Warner Bros. follow 
+with steady earnings, but Disney’s worldwide reach and strong franchises give it
+a clear edge.
+
+Comedy:
+Universal Pictures and Warner Bros. are also strong in comedy, producing a steady
+stream of crowd-pleasing hits. Columbia Pictures adds solid support, known for 
+family-friendly and romantic comedies with broad appeal.
+
+Drama:
+Paramount Pictures and Columbia Pictures lead in drama, backing many award winning 
+and popular titles. Universal and Warner Bros. contribute as well but with slightly
+lower overall drama revenue.
+
+Horror:
+New Line Cinema and Lionsgate shine in horror, focusing on low cost and high return 
+productions. Their ability to make profitable movies on smaller budgets lets them 
+compete effectively with the bigger studios.
+
+Unclassified/NA:
+The "Other" group is a mix of many smaller and independent studios, together 
+generates the largest single share overall. While each studio is small on its own,
+their combined output across genres makes a major impact worldwide.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
