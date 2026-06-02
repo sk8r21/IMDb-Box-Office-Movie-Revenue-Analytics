@@ -12,11 +12,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 
-```{r}
-getwd()
-```
-
-
 
 # Exploring IMDb dataset
 
